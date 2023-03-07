@@ -1,0 +1,75 @@
+on init
+    mount none /vendor/lost+found /vendor/overlay bind
+    setprop sys.usb.ffs.aio_compat 1
+    setprop persist.vendor.vilte_support 0
+
+on fs
+    mount_all /vendor/etc/fstab.mt6785 --early
+    mount_all /vendor/etc/fstab.mt6785 --late
+
+on post-fs
+    # Unmount the overridden fstab because the SELinux label is incorrect
+    # and some MTK daemons can crash because of that
+    # (at post-fs, the fstab has already been used to mount the partitions,
+    #  so it is fine to just revert back)
+    umount /vendor/etc/fstab.mt6785
+
+on post-fs-data
+    # VideoCodec
+    chmod 0666 /dev/video0
+    chmod 0666 /dev/video1
+
+    # Services
+    stop console
+
+on boot
+    # DT2W
+    write /proc/touchpanel/double_tap_enable 1
+
+    # Update touchscreen firmware
+    write /proc/touchpanel/tp_fw_update 1
+
+    # Disable edge limit control interface
+    write /proc/touchpanel/oppo_tp_limit_enable 0
+
+    # Enable oppo touchpanel direction
+    write /proc/touchpanel/oppo_tp_direction 1
+
+    # Game mode
+    write /proc/touchpanel/game_switch_enable 1
+
+    # USB-OTG
+    chown system system /sys/class/power_supply/usb/otg_switch
+    chmod 0666 /sys/class/power_supply/usb/otg_switch
+
+    # Smart Charging
+    chown system system /sys/class/power_supply/battery/mmi_charging_enable
+    chmod 0666 /sys/class/power_supply/battery/mmi_charging_enable
+
+service charger /system/bin/charger
+    class charger
+    user system
+    group system graphics input
+    capabilities SYS_BOOT
+    seclabel u:r:charger:s0
+
+on property:sys.boot_completed=1
+    
+    # ZRAM
+    swapon_all /vendor/fstab.enableswap
+
+# Disable AOSP RIL if MTK RIL is up
+on property:vendor.ril.mtk=1
+    stop vendor.ril-daemon
+
+# Performance profiles
+on property:perf_profile=1
+    exec - root -- /system/bin/perf_profile.sh 1
+
+on property:perf_profile=0
+    exec - root -- /system/bin/perf_profile.sh 0
+
+on property:sys.boot_completed=1
+    chown root root /sys/module/ged/parameters/gx_force_cpu_boost
+    chown root root /proc/cpufreq/cpufreq_power_mode
+    chown root root /proc/cpufreq/cpufreq_cci_mode
